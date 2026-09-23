@@ -4,7 +4,7 @@
          python monitor.py --once   (один дайджест зараз: cron / GitHub Actions)
          python monitor.py --test   (тестове повідомлення в Telegram)
 """
-import os, sys, time, html, sqlite3, logging
+import os, re, sys, time, html, sqlite3, logging
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import requests
@@ -17,8 +17,8 @@ STATUSES = {"active.enquiries", "active.tendering"}   # лише ті, де ще
 # ----------------------------------
 
 API = "https://public-api.prozorro.gov.ua/api/2.5"
-TG_TOKEN = os.environ.get("TG_TOKEN", "")
-TG_CHAT = os.environ.get("TG_CHAT_ID", "")
+TG_TOKEN = os.environ.get("TG_TOKEN", "").strip()
+TG_CHAT = os.environ.get("TG_CHAT_ID", "").strip().strip('"')
 DB_PATH = os.getenv("DB_PATH", "state.db")
 SEND_HOUR = int(os.getenv("SEND_HOUR", "9"))       # година відправки за Києвом
 KYIV = ZoneInfo("Europe/Kyiv")
@@ -134,7 +134,18 @@ def tg(text):
                                 "disable_web_page_preview": True}, timeout=30)
         if r.status_code == 429:
             time.sleep(r.json().get("parameters", {}).get("retry_after", 5)); continue
-        r.raise_for_status(); break
+        if r.ok:
+            break
+        err = r.json().get("description", r.text)
+        if "parse entities" in err:          # помилка розмітки -> надсилаємо простим текстом
+            plain = re.sub(r"<[^>]+>", "", text)
+            r2 = requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
+                               json={"chat_id": TG_CHAT, "text": html.unescape(plain),
+                                     "disable_web_page_preview": True}, timeout=30)
+            if r2.ok:
+                break
+            err = r2.json().get("description", r2.text)
+        raise RuntimeError(f"Telegram відповів: {err} (chat_id={TG_CHAT!r})")
     time.sleep(1.1)   # ліміт Telegram ~1 повід./сек у чат
 
 
