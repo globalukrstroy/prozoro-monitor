@@ -1,0 +1,22 @@
+name: prozorro-monitor
+on:
+  schedule: [{cron: "0 6 * * *"}]
+  workflow_dispatch:
+concurrency: {group: monitor, cancel-in-progress: false}
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements.txt
+      - uses: actions/cache/restore@v4
+        with: {path: state.db, key: "state-${{ github.run_id }}", restore-keys: "state-"}
+      - run: python monitor.py --once
+        env:
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+      - uses: actions/cache/save@v4
+        if: always()
+        with: {path: state.db, key: "state-${{ github.run_id }}"}
