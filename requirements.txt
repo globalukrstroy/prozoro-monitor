@@ -1,2 +1,7 @@
 requests>=2.31
 tzdata
+python-docx
+openpyxl
+xlrd
+pypdf
+markdown
